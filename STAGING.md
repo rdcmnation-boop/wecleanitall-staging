@@ -1,0 +1,51 @@
+# WE CLEAN IT ALL — staging replica
+
+This repository is the **staging copy** of www.wecleanitallfl.com, served at https://staging.wecleanitallfl.com.
+It is for testing only. It is not indexed by search engines and must never point at production.
+
+## Source
+
+An exact copy of the live site repository `rdcmnation-boop/wecleanitallfl`, branch `main`, commit `e2172d0` (2026-11-17).
+No features were added and no behaviour was changed, apart from the staging-only differences below.
+
+## Staging-only differences from the live site
+
+| File | Live | Staging | Why |
+|---|---|---|---|
+| `CNAME` | `www.wecleanitallfl.com` | `staging.wecleanitallfl.com` | Staging address |
+| `app/config.js` | Production Supabase (`fqajygzjteauxornipva`) URL + publishable key; `APP_URL` www | Staging Supabase (`elzpvlpeypkcsvywwebl`, `wcia-staging`) URL + publishable key; `APP_URL` staging | Staging uses only the staging database, API and sign-in |
+| `app/owner.js` | WhatsApp webhook URL and dashboard link to the production project | Same, pointed at the staging project | Owner panel never shows or links production |
+| `demo/app/owner.js` | Dashboard link to the production project | Staging project | Same reason |
+| `robots.txt` | Allow all + sitemap | Disallow all | Keep staging out of search engines |
+| `index.html`, `comercial/`, `privacy/`, `terms/`, `app/`, `demo/` | Some pages `noindex`, others indexable | All pages `noindex, nofollow` | Same reason |
+
+Files left as they are on purpose: SQL and documentation that mention the production project ID (they are reference
+material, not loaded by the site); `canonical` and Open Graph tags (they point to www, which also tells search engines
+the live site is the real one); the Google verification file; `sitemap.xml` (blocked by robots.txt).
+
+The `Supabase keep-alive` workflow reads `app/config.js`, so in this repository it pings the **staging** project only.
+
+## Known behaviour differences caused by the staging database
+
+The staging database is ahead of production (milestone1 work and the Contract Center foundation), while this site runs
+the live app code. The 50 database functions the app calls exist in both projects with identical signatures, but:
+
+- **Cleaner job flow:** staging requires a check-in before "Start job" and a check-out before "Complete job"
+  (`a5_require_job_proof`). The live app has no check-in screen, so cleaners will see `check_in_required` /
+  `check_out_required` errors on staging. The owner account is exempt.
+- **Duplicate booking guard:** staging refuses the same booking (same customer, service, ZIP, time) within 10 minutes
+  (`duplicate_booking`). Production has no such guard.
+- **Extra booking tracking:** staging records workflow states and events for each booking. Invisible to the live app.
+
+## Settings that must be made outside this repository
+
+1. GitHub → this repo → Settings → Pages: Source "Deploy from a branch", branch `main`, folder `/ (root)`;
+   custom domain `staging.wecleanitallfl.com`; tick "Enforce HTTPS" once the certificate is issued.
+2. Supabase → project `wcia-staging` → Authentication → URL Configuration: Site URL `https://staging.wecleanitallfl.com`,
+   and add it to Redirect URLs. Without this, sign-in and email links on staging go to the wrong address.
+
+## Rules
+
+- Never put production keys, service-role keys or any secret in this repository.
+- Never change `app/config.js` to point at production.
+- Production changes happen only in `rdcmnation-boop/wecleanitallfl`, after explicit owner approval.

@@ -1,0 +1,18 @@
+# We Clean It All Services
+
+Website for We Clean It All Services, commercial cleaning in Miami-Dade and Broward County, Florida.
+
+Live at https://www.wecleanitallfl.com (wecleanitallfl.com forwards there). The home page is the marketplace app; the commercial landing page is at /comercial/. (hosted on GitHub Pages from the `main` branch).
+
+- `index.html`: the whole site (one page)
+- `media/mark.svg`: the building-and-leaf logo as a vector (used for the 3D logo, header and footer)
+- `media/photos/`: job photos
+- `media/og-card.jpg`: preview image shown when the link is shared
+- `media/icon-*.png`, `favicon.ico`: browser and phone icons
+- `CNAME`: custom domain for GitHub Pages
+- `app/`: the marketplace app (customers, cleaners, owner) at /app/ — see `marketplace/README.md`
+- `marketplace/supabase/`: database schema, security tests and Phase 2 connectors
+
+Time rule (permanent): every time shown to people is 24-hour military time, HH:mm (00:00 to 23:59), never AM/PM. All screens format times through `app/time.js` (demo copy in `demo/app/time.js`); server messages use the same rule in Miami time. `node --test tests/` fails if any user-facing file formats a 12-hour clock.
+
+Contact: 954-320-9303 · wecleanitallfl@gmail.com · Instagram @wecleanitallfl
