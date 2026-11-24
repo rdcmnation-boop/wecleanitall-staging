@@ -1,5 +1,21 @@
-// Retired: the app moved to the home page (/sw.js). Remove this old worker from devices that installed it.
-self.addEventListener("install", () => self.skipWaiting());
+// We Clean It All app — offline support for the app at /app/ (scope /app/).
+// The commercial homepage at / is a plain web page and is not cached by this worker.
+const CACHE = "wcia-app-v16";
+const SHELL = ["/app/", "/app/app.css", "/app/app.js", "/app/time.js", "/app/api.js", "/app/owner.js", "/app/dash.js", "/app/i18n.js", "/app/learn.js", "/app/config.js", "/app/manifest.webmanifest", "/media/mark.svg", "/media/icon-180.png", "/media/icon-512.png"];
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
 self.addEventListener("activate", (e) => {
-  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))).then(() => self.registration.unregister()));
+  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+});
+self.addEventListener("fetch", (e) => {
+  const u = new URL(e.request.url);
+  if (e.request.method !== "GET" || u.origin !== location.origin) return; // Supabase & fonts go straight to the network
+  // Network first so updates show right away; fall back to the cached shell when offline.
+  e.respondWith(
+    fetch(e.request).then((r) => {
+      if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
+      return r;
+    }).catch(() => caches.match(e.request).then((r) => r || caches.match("/app/")))
+  );
 });

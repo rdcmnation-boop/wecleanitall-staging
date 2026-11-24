@@ -147,7 +147,7 @@
     worker: [],
     admin: [["panel", "grid", "tab_panel"], ["bookings", "list", "tab_bookings"], ["workers", "users", "tab_workers"], ["system", "spark", "tab_more"]]
   };
-  const APP_VERSION = "2026.11.2k";
+  const APP_VERSION = "2026.11.3a";
   let DASH = null;
   const DD = () => DASH || (DASH = window.WCIA_DASH({ t, esc, icon, money, when, svcName, S, CFG, wa, tel, stars, empty, loading, jobTimer, statusBanner, reviewsPanel, role, brainCard, store, tile, lang: () => lang, version: APP_VERSION }));
   // Screens a role can open (tab bar + side menu + sub-screens), so a saved screen is restored after a reload.
@@ -241,7 +241,7 @@
   }
   function header(extra) {
     const inApp = S.screen === "app" && S.me;
-    return '<header class="top' + (inApp ? " in" : "") + '">' + (inApp ? DD().menuBtn() : "") + '<a class="brand" href="/" aria-label="We Clean It All">' +
+    return '<header class="top' + (inApp ? " in" : "") + '">' + (inApp ? DD().menuBtn() : "") + '<a class="brand" href="/app/" aria-label="We Clean It All">' +
       '<img src="/media/mark.svg" alt="" width="40" height="40"><span class="wm">We Clean<b>It All</b>' +
       (inApp ? '<em class="role-tag r-' + role() + '">' + esc(t("role_" + role())) + "</em>" : "") + "</span></a>" +
       '<div class="top-actions"><span class="hdr-time"><span class="hdr-clock" data-clock aria-label="' + esc(t("clock_label")) + '">' + esc(clockText()) + '</span><small class="hdr-date" data-hdr-date>' + esc(headerDate()) + "</small></span>" + (extra || "") +
@@ -265,7 +265,7 @@
         // Three doors, so nobody signs in to the wrong side: client, cleaner, owner.
         '<div class="doors"><p class="label center">' + esc(t("have_account")) + " · " + esc(t("sign_in_as")) + '</p><div class="door-row">' +
         [["customer", "home"], ["worker", "broom"], ["admin", "shield"]].map(([r, ic]) => '<button class="door d-' + r + '" data-act="signin" data-as="' + r + '">' + icon(ic) + "<span>" + esc(t("door_" + r)) + "</span><small>" + esc(t("door_" + r + "_sub")) + "</small></button>").join("") + "</div></div>" +
-        '<a class="link-btn center" href="/comercial/">' + esc(t("comm_eyebrow")) + "</a>" +
+        '<a class="link-btn center" href="/">' + esc(t("comm_eyebrow")) + "</a>" +
         (API.mode === "demo" ?'<div class="demo-try"><span>' + esc(t("demo_try")) + ':</span><button class="pill" data-act="demo" data-kind="customer">' + esc(t("demo_customer")) +
           '</button><button class="pill" data-act="demo" data-kind="worker">' + esc(t("demo_worker")) + '</button><button class="pill" data-act="demo" data-kind="owner">' + esc(t("demo_owner")) + "</button></div>" : "");
     } else if (S.screen === "signup") {
@@ -1520,7 +1520,7 @@
   });
 
   // PWA
-  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("/sw.js").catch(() => {});
+  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" }).catch(() => {});
 
   boot();
 })();

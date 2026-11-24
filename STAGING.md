@@ -44,6 +44,27 @@ the live app code. The 50 database functions the app calls exist in both project
 2. Supabase → project `wcia-staging` → Authentication → URL Configuration: Site URL `https://staging.wecleanitallfl.com`,
    and add it to Redirect URLs. Without this, sign-in and email links on staging go to the wrong address.
 
+## Checkpoint A: commercial homepage (branch `homepage-checkpoint-a`)
+
+Built from the frozen v1 desktop + phone artboards and the Homepage & Platform Implementation Plan. Staging only.
+
+| Area | What changed |
+|---|---|
+| `/` | New static commercial homepage (`index.html`, `home/home.css`, `home/route.js`, `home/site.js`). Does not load the app. |
+| `/es/` | Spanish twin with hreflang links. Spanish wording is a draft for native-speaker review. |
+| `/app/` | The booking app moved here from `/` (old `/app/` redirect removed). Canonical, worker scope, manifest (`start_url`/`scope` `/app/`, `lang` en) and in-app logo link updated. |
+| `app/config.js` | `APP_URL` → `https://staging.wecleanitallfl.com/app/` so new sign-in emails land in the app. |
+| `/sw.js` | Now a cleanup worker that removes the old root worker and its caches from devices. The real worker is `/app/sw.js`. |
+| Old sign-in links | `home/route.js` forwards any `/` address carrying a sign-in or reset token to `/app/`. |
+| `/comercial/` | Redirect page to `/` (`#quote` → `#assess`). |
+| Site-assessment form | Opens the visitor's email app with the details filled in (no database). The public intake function into `contract_center.prospects` is a new Contract Center module and stays off until it passes the security retest. |
+| Tests | `tests/homepage.test.js` (11 tests); `tests/time24.test.js` now checks the app at its new path. |
+
+Not in this checkpoint: the residential switch inside the booking flow (`RESIDENTIAL_PUBLIC`), the public intake function, real robot photography.
+
+Setting needed outside the repo for this branch: Supabase → `wcia-staging` → Authentication → URL Configuration → add
+`https://staging.wecleanitallfl.com/app/` to Redirect URLs (keep the existing `/` entry during the transition).
+
 ## Rules
 
 - Never put production keys, service-role keys or any secret in this repository.

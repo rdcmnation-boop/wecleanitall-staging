@@ -124,12 +124,12 @@ test('no user-facing file formats a 12-hour clock or writes AM/PM', () => {
 
 test('the app and demo load the shared formatter before the screens, and the offline cache includes it', () => {
   const order = (html, a, b) => html.indexOf(a) > -1 && html.indexOf(a) < html.indexOf(b);
-  const idx = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  assert.ok(order(idx, '/app/time.js', '/app/app.js'), 'index.html loads app/time.js before app.js');
-  assert.ok(order(idx, '/app/time.js', '/app/dash.js'), 'index.html loads app/time.js before dash.js');
+  const idx = fs.readFileSync(path.join(ROOT, 'app/index.html'), 'utf8');
+  assert.ok(order(idx, '/app/time.js', '/app/app.js'), 'app/index.html loads app/time.js before app.js');
+  assert.ok(order(idx, '/app/time.js', '/app/dash.js'), 'app/index.html loads app/time.js before dash.js');
   const demo = fs.readFileSync(path.join(ROOT, 'demo/index.html'), 'utf8');
   assert.ok(order(demo, '/demo/app/time.js', '/demo/app/app.js'), 'demo loads time.js before app.js');
-  assert.match(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), /"\/app\/time\.js"/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'app/sw.js'), 'utf8'), /"\/app\/time\.js"/);
   assert.equal(fs.readFileSync(path.join(ROOT, 'app/time.js'), 'utf8'), fs.readFileSync(path.join(ROOT, 'demo/app/time.js'), 'utf8'), 'demo copy matches');
 });
 
