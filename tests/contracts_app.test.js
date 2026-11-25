@@ -195,3 +195,10 @@ test('the app links the new screens and the provider sign-up deep link', () => {
   assert.match(dash, /\["opps", "building", "m_opps"\]/);
   assert.match(html, /<script src="\/app\/contracts_app\.js\?v=[^"]+"><\/script>\n<script src="\/app\/app\.js/);
 });
+
+test('app page loads every script and stylesheet with one shared cache version (bump it on each release)', () => {
+  const html = read('app/index.html');
+  const versions = [...new Set([...html.matchAll(/\/(?:app|marketplace)\/[^"]+\?v=([^"]+)"/g)].map((m) => m[1]))];
+  assert.equal(versions.length, 1, 'mixed cache versions: ' + versions.join(', '));
+  assert.notEqual(versions[0], '2026.11.3a', 'cache version must change when app code changes');
+});
