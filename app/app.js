@@ -123,8 +123,12 @@
     if (API.hasSession()) {
       try { S.me = await API.me(); } catch (e) { S.me = null; }
     }
+    // /app/?join=provider (from the Contracts & Jobs page): open provider sign-up directly.
+    const join = new URLSearchParams(location.search).get("join");
+    if (join) history.replaceState(null, "", location.pathname + location.hash);
     if (API.recovery && API.recovery()) S.screen = "newpass";
     else if (S.me) afterLogin();
+    else if (join === "provider") { S.authRole = "worker"; S.form.kind = "individual"; S.screen = "signup"; }
     render();
     poll();
   }
@@ -149,9 +153,12 @@
   };
   const APP_VERSION = "2026.11.3a";
   let DASH = null;
+  // Contracts & Cleaning Jobs screens (contracts_app.js).
+  let CCM = null;
+  const CC = () => CCM || (CCM = window.WCIA_CONTRACTS({ esc, icon, S, API, when, money, empty, loading: () => loading(), lang: () => lang, render: () => render(), loadTab: (q) => loadTab(q), toast: (m, k) => toast(m, k) }));
   const DD = () => DASH || (DASH = window.WCIA_DASH({ t, esc, icon, money, when, svcName, S, CFG, wa, tel, stars, empty, loading, jobTimer, statusBanner, reviewsPanel, role, brainCard, store, tile, lang: () => lang, version: APP_VERSION }));
   // Screens a role can open (tab bar + side menu + sub-screens), so a saved screen is restored after a reload.
-  const SCREENS = { customer: ["book", "orders", "account", "learn", "help", "cleaners"], worker: ["dash", "myjobs", "earnings", "ratings", "account", "profile", "learn", "help"], admin: ["panel", "bookings", "workers", "system", "analytics", "learn", "account", "connectors"] };
+  const SCREENS = { customer: ["book", "orders", "account", "learn", "help", "cleaners"], worker: ["dash", "myjobs", "earnings", "ratings", "account", "profile", "learn", "help", "opps", "myapps", "creds"], admin: ["panel", "bookings", "workers", "system", "analytics", "learn", "account", "connectors", "cc"] };
   function startRole() {
     S.screen = "app";
     const r = role();
@@ -210,6 +217,7 @@
       bookings: async () => { const [bookings, workers] = await Promise.all([API.adminBookings(), API.adminWorkers()]); return { bookings, workers }; },
       connectors: async () => ({ stats: await API.adminStats() })
     };
+    Object.assign(loaders, CC().loaders);
     if (!loaders[tab]) { render(); return; }
     if (!quiet) { S.data.loading = true; render(); }
     try { const d = await loaders[tab](); if (S.tab === tab) S.data = Object.assign({}, S.data, d, { loading: false }); }
@@ -363,6 +371,7 @@
     const views = { book: vBook, orders: vOrders, cleaners: vCleaners, account: r === "worker" ? D.vAccount : vAccount, jobs: vJobs, myjobs: vMyJobs, learn: vLearn, earnings: r === "worker" ? D.vEarnings : vEarnings, profile: vProfile, panel: vPanel, workers: vWorkers, bookings: vAdminBookings, connectors: vConnectors,
       ratings: D.vRatings, help: D.vHelp,
       analytics: () => owner().vAnalytics(), system: () => owner().vSystem({ connectors: () => strip(vConnectors()), account: () => strip(vAccount()) }) };
+    Object.assign(views, CC().views);
     const overlays = verifyModal() + reviewsModal() + D.drawer() + D.signOutSheet() + D.notesPage() + D.messagesPage();
     // Cleaner home is full screen, like the Dasher app: zones behind, floating buttons on top, one sheet at the bottom.
     if (r === "worker" && S.tab === "dash") return D.vDash() + '<div id="radioSheetHost"></div>' + overlays;
@@ -1164,6 +1173,7 @@
     const a = el.dataset.act, id = el.dataset.id;
     if (el.tagName === "A") return;
     e.preventDefault();
+    if (a.indexOf("cc-") === 0) { await CC().onClick(a, el); return; }
     if (a === "lang") { lang = lang === "es" ? "en" : "es"; store.set("wcia_lang", lang); document.documentElement.lang = lang; render(); }
     else if (a === "auth") { S.authRole = el.dataset.role; S.form.kind = "individual"; S.screen = "signup"; render(); }
     else if (a === "signin") { S.signinAs = el.dataset.as || (S.screen === "signup" ? S.authRole : S.screen === "forgot" ? S.signinAs : null); S.screen = "signin"; render(); }
@@ -1417,6 +1427,7 @@
     e.preventDefault();
     const form = e.target, kind = form.dataset.form, d = formData(form);
     if (kind === "brain") { await brainAsk(form); return; }
+    if (kind && kind.indexOf("cc-") === 0) { await CC().onSubmit(kind, d, form); return; }
     const invalid = [...form.querySelectorAll("input[required]")].find((i) => !i.checkValidity());
     if (invalid && kind !== "dir") { const sec = invalid.closest("details"); if (sec && !sec.open) sec.open = true; invalid.focus(); invalid.reportValidity && invalid.reportValidity(); return; }
     try {

@@ -805,3 +805,13 @@ body.cleaner .dash{position:relative;min-height:100vh;min-height:100dvh}
 .ofold>summary .eyebrow{margin:0}
 .ofold>.card{margin:0 10px 10px;border:0;box-shadow:none;background:transparent;padding:4px 6px 10px}
 .fee-lines{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:12px 0 0;font-size:15px}.fee-lines dd{margin:0;text-align:right}.fee-lines .tot{font-weight:800;color:var(--lime);border-top:1px solid rgba(255,255,255,.12);padding-top:6px}
+/* Contracts & Cleaning Jobs (contracts_app.js) */
+.cc .bio{margin:0}
+.cc-list{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:15px}
+.cc-list.plain{list-style:none;padding:0;gap:10px}
+.cc-form{border-top:1px solid var(--line,#1d2e22);padding-top:14px;margin-top:6px}
+.cc-form textarea,.cc-form select{width:100%}
+.cc-app{border-top:1px solid var(--line,#1d2e22);padding-top:12px;margin-top:8px;display:flex;flex-direction:column;gap:8px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.fine.warn{color:var(--warn)}
+h2.sub{font:800 19px var(--display);margin:18px 0 4px}

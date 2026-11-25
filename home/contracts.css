@@ -1,0 +1,71 @@
+/* WE CLEAN IT ALL — Contracts & Cleaning Jobs (/contracts/ and /es/contracts/).
+   Adds to home.css only: same colors, type and components as the frozen homepage. */
+.jobs-hero { padding-top: 64px; padding-bottom: 40px; display: flex; flex-direction: column; gap: 18px; max-width: 860px; }
+.jobs-hero h1 { font-size: clamp(34px, 4.4vw, 54px); line-height: 1.1; }
+.jobs-hero .hero-lead { max-width: 720px; }
+.audiences { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; padding-bottom: 72px; }
+.audience { background: var(--panel); border: 1px solid var(--edge); border-radius: 18px; padding: 28px; display: flex; flex-direction: column; gap: 12px; }
+.audience strong { font-family: var(--head); font-size: 22px; line-height: 1.25; }
+.audience .btn { align-self: flex-start; margin-top: 6px; }
+
+.board-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.filters[hidden] { display: none; }
+.filters { display: flex; flex-wrap: wrap; gap: 10px; }
+.filters select { background: var(--field); border: 1px solid var(--ring); border-radius: 10px; color: var(--text); padding: 10px 12px; font-size: 16px; min-height: 44px; font-family: inherit; }
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
+.job { background: var(--void); border: 1px solid var(--edge); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+.job-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.job h3 { margin: 0; font-family: var(--head); font-weight: 800; font-size: 20px; line-height: 1.25; }
+.job-area { color: var(--soft); font-size: 16px; }
+.job dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; font-size: 15px; }
+.job dt { color: var(--muted); }
+.job dd { margin: 0; }
+.job-req { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.job-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+.job-foot a { font-weight: 700; font-size: 16px; }
+.pill-soon { background: #3a2f0b; color: #ffd76a; border-color: #6b5615; font-weight: 700; }
+.pill-filled { color: var(--muted); }
+.job-filled { opacity: 0.72; }
+.board-empty { border: 2px dashed var(--ring); border-radius: 18px; padding: 40px 28px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.board-empty strong { font-family: var(--head); font-size: 22px; }
+.ref { font-family: var(--head); font-size: 13px; color: var(--muted); letter-spacing: 0.04em; }
+
+.pipeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; counter-reset: p; }
+.pipeline li { background: var(--void); border: 1px solid var(--edge); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+.pipeline b { font-family: var(--head); font-weight: 800; font-size: 24px; color: var(--lime); }
+.pipeline strong { font-size: 18px; }
+.pipeline span { color: var(--muted); font-size: 15px; }
+.not-contract { border-left: 4px solid var(--lime); padding: 14px 18px; background: var(--panel); border-radius: 0 12px 12px 0; }
+
+.access { border: 1px solid var(--edge); border-radius: 18px; overflow: hidden; }
+.access table { width: 100%; border-collapse: collapse; font-size: 16px; }
+.access th, .access td { text-align: left; padding: 14px 20px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.access thead th { background: var(--panel); color: var(--muted); font-size: 14px; font-weight: 600; }
+.access tbody th { font-weight: 600; }
+.access tr:last-child td, .access tr:last-child th { border-bottom: 0; }
+.yes { color: var(--lime); font-weight: 700; }
+.no { color: var(--muted); }
+
+.needs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.needs li { border: 1px solid var(--edge); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 4px; }
+.needs-cta { align-self: flex-start; }
+.needs span { color: var(--muted); font-size: 15px; }
+.form textarea { background: var(--field); border: 1px solid var(--ring); border-radius: 10px; color: var(--text); padding: 12px; font-size: 16px; min-height: 96px; font-family: inherit; width: 100%; resize: vertical; }
+
+@media (max-width: 720px) {
+  .jobs-hero { padding-top: 36px; padding-bottom: 24px; gap: 14px; }
+  .jobs-hero h1 { font-size: 32px; }
+  .audiences { grid-template-columns: 1fr; gap: 14px; padding-bottom: 40px; }
+  .audience { padding: 22px; }
+  .audience .btn, .needs-cta { align-self: stretch; }
+  .board { grid-template-columns: 1fr; gap: 14px; }
+  .job { padding: 20px; }
+  .filters { width: 100%; }
+  .filters select { flex: 1 1 140px; }
+  .pipeline, .needs { grid-template-columns: 1fr; gap: 12px; }
+  .access thead { position: absolute; left: -9999px; }
+  .access tr { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--line); }
+  .access tbody th { grid-column: 1 / -1; padding: 12px 16px 4px; border: 0; }
+  .access td { padding: 4px 16px 12px; border: 0; font-size: 14px; }
+  .access td::before { content: attr(data-l); display: block; color: var(--muted); font-size: 12px; }
+}

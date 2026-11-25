@@ -70,3 +70,30 @@ Setting needed outside the repo for this branch: Supabase → `wcia-staging` →
 - Never put production keys, service-role keys or any secret in this repository.
 - Never change `app/config.js` to point at production.
 - Production changes happen only in `rdcmnation-boop/wecleanitallfl`, after explicit owner approval.
+
+## Contracts & Cleaning Jobs (branch `contracts-jobs-local`, local only, 2026-11-25)
+
+Built for review. Not pushed, not deployed, and the database migration is **not applied** to any project.
+
+| Area | What changed |
+|---|---|
+| `/contracts/`, `/es/contracts/` | New public page: open-opportunity board (sanitized summaries only), "a listing is not a contract" pipeline, access table, provider registration, business request form (email app, no database). Same black-and-lime design as the homepage. |
+| `index.html`, `es/index.html` | One new card in the Contracts section linking to the jobs page. Nav unchanged. |
+| `app/contracts_app.js` + small hooks | Provider screens: Opportunities, My applications, Credentials. Owner screen: Contracts & jobs (switches, listings, provider-visible lines, invites, applications, credential review, proposed assignment). `/app/?join=provider` opens provider sign-up. |
+| `app/api.js` | `API.cc()` can call only the 22 marketplace functions; `uploadDoc` now returns the stored path. |
+| `marketplace/supabase/contract_marketplace.sql` | Migration (re-runnable). Reuses `contract_center.*`, `workers`, `insurance_policies`, `provider_compliance`, `provider_coverage`, `worker-docs`. Adds listing fields, `provider_applications`, `listing_invites`, `marketplace_flags` (all OFF) and the functions. |
+
+**Safety design**
+- Everything ships OFF. The owner can't switch anything on until a security retest is recorded in the database.
+- Public board = only fields the owner writes on purpose. Publishing refuses client, site or incumbent names, street numbers / ZIPs, emails and links, and unverified opportunities.
+- Internal requirement and scope lines are hidden from providers until the owner marks each one visible.
+- Registered (pending) providers: summary + visible requirements, drafts only. Approved: + scope, city / ZIP / size, eligibility, submit. Never the street address, site name or client.
+- Submitting checks approval, service area and verified, unexpired insurance / documents the listing requires.
+- Selection is a human decision. "Propose assignment" creates a **proposed** provider assignment on an existing signed contract; activation stays in the Contract Center. No payments anywhere.
+- No table is readable directly; everything goes through functions.
+
+**Tests**
+- `marketplace/supabase/test/contract_marketplace_test.sh`: 113 security checks on a throwaway Postgres, using `contract_center_fixture.sql`, which mirrors the staging tables.
+- `tests/contracts_page.test.js` and `tests/contracts_app.test.js`, plus all existing tests: 112 JS tests.
+
+**Before applying to wcia-staging:** owner review; a security retest on staging itself (the fixture mirrors staging, but triggers on staging tables were not reproduced); then apply; then record the retest and switch on one flag at a time.

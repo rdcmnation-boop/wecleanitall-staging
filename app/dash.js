@@ -125,8 +125,8 @@
   const DAY = 864e5;
   const MENU = {
     customer: [["book", "home", "m_home"], ["orders", "list", "tab_orders"], ["account", "user", "tab_account"], ["learn", "bulb", "m_tips"], ["help", "help", "m_help"]],
-    worker: [["dash", "home", "m_home"], ["myjobs", "calendar", "m_schedule"], ["earnings", "cash", "tab_earnings"], ["ratings", "star", "m_ratings"], ["account", "user", "tab_account"], ["learn", "bulb", "m_career"], ["help", "help", "m_help"]],
-    admin: [["panel", "grid", "tab_panel"], ["bookings", "list", "tab_bookings"], ["workers", "users", "tab_workers"], ["analytics", "chart", "tab_analytics"], ["system", "spark", "tab_more"], ["learn", "bulb", "tab_learn"], ["account", "user", "tab_account"]]
+    worker: [["dash", "home", "m_home"], ["myjobs", "calendar", "m_schedule"], ["opps", "building", "m_opps"], ["myapps", "list", "m_myapps"], ["creds", "shield", "m_creds"], ["earnings", "cash", "tab_earnings"], ["ratings", "star", "m_ratings"], ["account", "user", "tab_account"], ["learn", "bulb", "m_career"], ["help", "help", "m_help"]],
+    admin: [["panel", "grid", "tab_panel"], ["bookings", "list", "tab_bookings"], ["workers", "users", "tab_workers"], ["cc", "building", "m_contracts"], ["analytics", "chart", "tab_analytics"], ["system", "spark", "tab_more"], ["learn", "bulb", "tab_learn"], ["account", "user", "tab_account"]]
   };
   const FAQ = { worker: ["w1", "w2", "w3", "w4", "w5"], customer: ["c1", "c2", "c3", "c4", "c5"] };
   const TRK = ["finding", "assigned", "onway", "cleaning", "done"];

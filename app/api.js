@@ -3,6 +3,11 @@
 //   DEMO  — everything in this browser's storage, for trying the app before Supabase is connected.
 (function () {
   "use strict";
+  const CC_FNS = ["provider_contract_listings", "provider_contract_listing", "save_contract_application", "submit_contract_application",
+    "withdraw_contract_application", "my_contract_applications", "my_provider_credentials", "submit_provider_insurance", "submit_provider_compliance",
+    "admin_marketplace_flags", "admin_record_security_retest", "admin_set_marketplace_flags", "admin_contract_listings", "admin_publish_listing",
+    "admin_set_listing_line_visibility", "admin_listing_lines", "admin_invite_provider", "admin_listing_applications", "admin_decide_application",
+    "admin_application_to_assignment", "admin_verify_provider_credential", "admin_pending_provider_credentials"];
   const CFG = window.WCIA_CONFIG || {};
   const LIVE = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY);
 
@@ -272,10 +277,17 @@
       async uploadDoc(uid, file) {
         const t = await token();
         const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(-80);
-        const r = await fetch(URL_ + "/storage/v1/object/worker-docs/" + uid + "/" + Date.now() + "_" + safe, {
+        const name = Date.now() + "_" + safe;
+        const r = await fetch(URL_ + "/storage/v1/object/worker-docs/" + uid + "/" + name, {
           method: "POST", headers: { apikey: KEY, Authorization: "Bearer " + t, "Content-Type": file.type || "application/octet-stream", "x-upsert": "false" }, body: file
         });
         if (!r.ok) throw new ApiError("upload_failed");
+        return uid + "/" + name;
+      },
+      // Contracts & Cleaning Jobs (contract_marketplace.sql). Only these database functions can be called from here.
+      async cc(fn, args) {
+        if (!CC_FNS.includes(fn)) throw new ApiError("not_allowed");
+        return rpc(fn, args || {});
       },
       async listDocs(uid) {
         const t = await token();
@@ -712,7 +724,8 @@
         }
         return { mode: "demo", reply };
       },
-      async uploadDoc(id, file) { const db = load(); (db.docs[id] = db.docs[id] || []).push({ name: file.name, path: "" }); save(db); },
+      async uploadDoc(id, file) { const db = load(); (db.docs[id] = db.docs[id] || []).push({ name: file.name, path: "" }); save(db); return ""; },
+      async cc() { return null; }, // Contracts & jobs need the real database; demo mode shows a notice.
       async listDocs(id) { return (load().docs[id] || []).slice(); },
       async docUrl() { return null; }
     };
