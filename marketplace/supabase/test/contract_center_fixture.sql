@@ -123,3 +123,98 @@ create policy "worker docs own read" on storage.objects for select to authentica
   using (bucket_id = 'worker-docs' and ((storage.foldername(name))[1] = (select auth.uid())::text or (select public.is_admin())));
 create policy "worker docs own delete" on storage.objects for delete to authenticated
   using (bucket_id = 'worker-docs' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- Approvals workflow, copied from wcia-staging (read 2026-11-25): approvals table + guard, _request_approval,
+-- ctr_propose_assignment, admin_decide_approval, ctr_decide and the assign_provider branch of _apply_decision.
+alter table contract_center.contracts add constraint contracts_status_check
+  check (status in ('onboarding','active','suspended','renewal_pending','ended','terminated'));
+alter table contract_center.contracts add column if not exists activated_at timestamptz;
+create table if not exists public.approvals (
+  id uuid primary key default gen_random_uuid(), agent text, action text check (char_length(action) between 3 and 80),
+  payload jsonb default '{}', status text default 'pending' check (status in ('pending','approved','rejected','expired')),
+  requested_at timestamptz default now(), decided_by uuid, decided_at timestamptz, reason text check (reason is null or char_length(reason) <= 500));
+alter table public.approvals enable row level security;
+revoke all on public.approvals from anon, authenticated;
+create or replace function public._approvals_guard() returns trigger language plpgsql set search_path = 'public' as $$
+begin
+  if tg_op = 'DELETE' then raise exception 'approvals_immutable: approvals cannot be deleted'; end if;
+  if old.status <> 'pending' then raise exception 'approvals_immutable: a decided approval cannot change'; end if;
+  if new.id <> old.id or new.agent <> old.agent or new.action <> old.action or new.payload <> old.payload or new.requested_at <> old.requested_at then
+    raise exception 'approvals_immutable: request details cannot change'; end if;
+  return new;
+end $$;
+create trigger approvals_guard before update or delete on public.approvals for each row execute function public._approvals_guard();
+create or replace function contract_center._request_approval(p_action text, p_agent text, p_payload jsonb) returns uuid
+language plpgsql security definer set search_path = '' as $$
+declare v_id uuid;
+begin
+if p_action not like 'contract_center.%' then raise exception 'bad_action'; end if;
+if pg_column_size(p_payload) > 8000 then raise exception 'payload_too_large'; end if;
+insert into public.approvals(agent, action, payload) values (coalesce(p_agent, 'contract_center'), p_action, p_payload) returning id into v_id;
+perform public._audit('approval_requested', 'approval', v_id::text, jsonb_build_object('agent', coalesce(p_agent, 'contract_center'), 'action', p_action));
+perform contract_center._alert_owner('ctr_approval', jsonb_build_object('approval_id', v_id, 'action', p_action, 'title', p_payload ->> 'title'));
+return v_id;
+end $$;
+create or replace function public.ctr_propose_assignment(p_contract uuid, p jsonb) returns uuid
+language plpgsql security definer set search_path = '' as $$
+declare c contract_center.contracts; v_why text; v_id uuid; v_worker uuid := (p ->> 'worker_id')::uuid; v_appr uuid;
+begin
+perform contract_center._require_owner();
+select * into c from contract_center.contracts where id = p_contract;
+if c.id is null then raise exception 'not_found'; end if;
+if c.status not in ('onboarding', 'active', 'renewal_pending') then raise exception 'contract_not_open'; end if;
+v_why := contract_center.provider_contract_block_reason(v_worker, c.id);
+if v_why is not null then raise exception 'provider_not_eligible: %', v_why; end if;
+insert into contract_center.provider_assignments(contract_id, location_id, worker_id, role, pay_basis, pay_rate, start_date, end_date, eligibility)
+values (c.id, (p ->> 'location_id')::uuid, v_worker, coalesce(p ->> 'role', 'subcontractor'), p ->> 'pay_basis', (p ->> 'pay_rate')::numeric,
+(p ->> 'start_date')::date, (p ->> 'end_date')::date, jsonb_build_object('checked_at', now(), 'result', 'eligible'))
+returning id into v_id;
+v_appr := contract_center._request_approval('contract_center.assign_provider', null, jsonb_build_object(
+'title', format('Assign provider to %s at %s %s', c.code, p ->> 'pay_rate', p ->> 'pay_basis'),
+'assignment_id', v_id, 'contract_id', c.id, 'opportunity_id', c.opportunity_id, 'worker_id', v_worker,
+'pay_basis', p ->> 'pay_basis', 'pay_rate', p ->> 'pay_rate'));
+update contract_center.provider_assignments set approval_id = v_appr where id = v_id;
+return v_id;
+end $$;
+create or replace function public.admin_decide_approval(p_id uuid, p_status text, p_reason text default null) returns void
+language plpgsql security definer set search_path = 'public' as $$
+declare v_row public.approvals;
+begin
+  if not public.is_admin() then raise exception 'admin_only'; end if;
+  if p_status not in ('approved','rejected') then raise exception 'bad_status'; end if;
+  if p_status = 'rejected' and coalesce(char_length(btrim(p_reason)),0) < 3 then raise exception 'reason_required'; end if;
+  select * into v_row from public.approvals where id = p_id for update;
+  if not found or v_row.status <> 'pending' then raise exception 'not_pending'; end if;
+  update public.approvals set status = p_status, decided_by = auth.uid(), decided_at = now(), reason = p_reason where id = p_id;
+  perform public._audit('approval_' || p_status, 'approval', p_id::text, jsonb_build_object('agent', v_row.agent, 'action', v_row.action, 'reason', p_reason));
+end $$;
+create or replace function contract_center._apply_decision(p_approval uuid) returns void
+language plpgsql security definer set search_path = '' as $$
+declare a public.approvals;
+begin
+select * into a from public.approvals where id = p_approval;
+if a.status not in ('approved', 'rejected') then raise exception 'not_decided'; end if;
+if a.action = 'contract_center.assign_provider' then
+update contract_center.provider_assignments
+set status = case when a.status = 'approved' then 'approved' else 'rejected' end, approval_id = a.id
+where id = (a.payload ->> 'assignment_id')::uuid and status = 'proposed';
+if not found then raise exception 'assignment_not_proposed'; end if;
+perform contract_center._log('provider', a.payload ->> 'assignment_id', (a.payload ->> 'opportunity_id')::uuid, 'assignment.' || a.status,
+'proposed', case when a.status = 'approved' then 'approved' else 'rejected' end, 'owner', null, jsonb_build_object('approval_id', a.id));
+else
+raise exception 'unknown_contract_center_action';
+end if;
+end $$;
+create or replace function public.ctr_decide(p_approval uuid, p_decision text, p_reason text default null) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v_action text;
+begin
+perform contract_center._require_owner();
+select action into v_action from public.approvals where id = p_approval;
+if v_action is null or v_action not like 'contract_center.%' then raise exception 'not_a_contract_center_approval'; end if;
+perform public.admin_decide_approval(p_approval, p_decision, p_reason);
+perform contract_center._apply_decision(p_approval);
+end $$;
+revoke all on function contract_center._request_approval(text, text, jsonb), contract_center._apply_decision(uuid) from public, anon, authenticated;
+revoke all on function public.ctr_propose_assignment(uuid, jsonb), public.admin_decide_approval(uuid, text, text), public.ctr_decide(uuid, text, text) from public, anon;
+grant execute on function public.ctr_propose_assignment(uuid, jsonb), public.admin_decide_approval(uuid, text, text), public.ctr_decide(uuid, text, text) to authenticated;

@@ -174,6 +174,7 @@ test('owner assignment needs a signed contract and creates a proposed assignment
   const html = M.views.cc();
   assert.match(html, /data-form="cc-assign"/);
   assert.match(html, /PROPOSED assignment/);
+  assert.match(html, /approvals queue/);
 });
 
 test('owner publish converts month and 24h close time before sending', async () => {

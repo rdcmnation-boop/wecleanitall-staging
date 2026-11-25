@@ -10,6 +10,7 @@ load() { psql -U postgres -d $DB -q -v ON_ERROR_STOP=1 -f "$1" >/dev/null 2>&1 |
 load "$HERE/supabase_stub.sql"; load "$HERE/../schema.sql"; load "$HERE/contract_center_fixture.sql"
 load "$HERE/../contract_marketplace.sql"; load "$HERE/../contract_marketplace.sql"   # must be re-runnable
 load "$HERE/../contract_marketplace_upload_guard.sql"; load "$HERE/../contract_marketplace_upload_guard.sql"
+load "$HERE/../contract_marketplace_assignment_approval.sql"; load "$HERE/../contract_marketplace_assignment_approval.sql"
 
 pass=0; fail=0
 sq() { psql -U postgres -d $DB -qtA -c "$1" 2>&1; }
@@ -167,9 +168,41 @@ check "selected cannot be withdrawn by provider" "$(as $W1 "select public.withdr
 check "no assignment exists yet" "$(sq "select count(*) from contract_center.provider_assignments")" "^0$"
 check "wrong contract refused" "$(as $A "select public.admin_application_to_assignment('$APP','33333333-0000-0000-0000-000000000002','subcontractor','monthly',3800,null)")" "contract_mismatch"
 check "provider cannot create assignment" "$(as $W1 "select public.admin_application_to_assignment('$APP','33333333-0000-0000-0000-000000000001','subcontractor','monthly',3800,null)")" "admin_only"
-check "owner creates PROPOSED assignment" "$(as $A "select public.admin_application_to_assignment('$APP','33333333-0000-0000-0000-000000000001','subcontractor','monthly',3800,null) is not null")" "^t$"
-check "assignment is proposed, not active" "$(sq "select status from contract_center.provider_assignments")" "^proposed$"
-check "no double assignment" "$(as $A "select public.admin_application_to_assignment('$APP','33333333-0000-0000-0000-000000000001','subcontractor','monthly',3800,null)")" "already_assigned"
+K1=33333333-0000-0000-0000-000000000001; K2=33333333-0000-0000-0000-000000000002
+assign() { as $A "select (public.admin_application_to_assignment('$APP','$K1','subcontractor','monthly',3800,null) is not null)::text"; }
+sq "update contract_center.contracts set status='ended' where id='$K1'" >/dev/null
+check "ended contract refused (existing contract-open rule)" "$(assign)" "contract_not_open"
+sq "update contract_center.contracts set status='onboarding' where id='$K1'" >/dev/null
+sq "update public.insurance_policies set expires_on=current_date-1 where worker_id='$W1'" >/dev/null
+check "expired insurance refused at assignment" "$(assign)" "provider_not_eligible:insurance_missing:general_liability"
+sq "update public.insurance_policies set expires_on=current_date+200, status='rejected' where worker_id='$W1'" >/dev/null
+check "rejected (unverified) insurance refused at assignment" "$(assign)" "provider_not_eligible:insurance_missing"
+sq "update public.insurance_policies set status='verified' where worker_id='$W1'" >/dev/null
+check "nothing created by refused attempts" "$(sq "select (select count(*) from contract_center.provider_assignments)||'/'||(select count(*) from public.approvals)")" "^0/0$"
+check "owner proposes through the existing Contract Center path" "$(assign)" "^true$"
+check "assignment is PROPOSED with a pending assign_provider approval" "$(sq "select pa.status||'/'||ap.action||'/'||ap.status from contract_center.provider_assignments pa join public.approvals ap on ap.id = pa.approval_id")" "^proposed/contract_center.assign_provider/pending$"
+check "approval request names this assignment" "$(sq "select (ap.payload->>'assignment_id') = pa.id::text from contract_center.provider_assignments pa join public.approvals ap on ap.id = pa.approval_id")" "^t$"
+check "approval appears in owner's queue (owner alerted)" "$(sq "select count(*) from public.notifications where user_id='$A' and template='ctr_approval' and channel='inapp'")" "^1$"
+check "application linked to the assignment" "$(sq "select a.assignment_id = pa.id from contract_center.provider_applications a join contract_center.provider_assignments pa on pa.id = a.assignment_id where a.id='$APP'")" "^t$"
+check "assignment records its source application" "$(sq "select eligibility->>'source' from contract_center.provider_assignments")" "^contract_application$"
+check "repeated request refused (no duplicate)" "$(assign)" "already_assigned"
+check "still exactly one assignment and one approval" "$(sq "select (select count(*) from contract_center.provider_assignments)||'/'||(select count(*) from public.approvals)")" "^1/1$"
+check "contract not activated, nothing billed" "$(sq "select status||'/'||coalesce(activated_at::text,'none') from contract_center.contracts where id='$K1'")" "^onboarding/none$"
+APPR=$(sq "select approval_id from contract_center.provider_assignments")
+check "provider cannot decide approvals" "$(as $W1 "select public.ctr_decide('$APPR','approved',null)")" "admin_only"
+check "owner without 2-step cannot decide" "$(AAL=aal1 as $A "select public.ctr_decide('$APPR','approved',null)")" "admin_only"
+check "rejection requires a reason" "$(as $A "select public.ctr_decide('$APPR','rejected','')")" "reason_required"
+as $A "select public.ctr_decide('$APPR','rejected','Test: pay rate too high')" >/dev/null
+check "failed approval: assignment becomes rejected" "$(sq "select status from contract_center.provider_assignments where approval_id='$APPR'")" "^rejected$"
+check "decided approval cannot be changed" "$(as $A "select public.ctr_decide('$APPR','approved',null)")" "not_pending"
+check "after a rejection the owner may re-propose" "$(as $A "select (public.admin_application_to_assignment('$APP','$K1','subcontractor','monthly',3500,null) is not null)::text")" "^true$"
+check "re-proposal filed a new pending approval" "$(sq "select count(*) filter (where status='pending')||'/'||count(*) from public.approvals")" "^1/2$"
+APPR2=$(sq "select approval_id from contract_center.provider_assignments where status='proposed'")
+as $A "select public.ctr_decide('$APPR2','approved',null)" >/dev/null
+check "owner approval moves it to approved (not active)" "$(sq "select status from contract_center.provider_assignments where approval_id='$APPR2'")" "^approved$"
+check "approval did not activate the contract" "$(sq "select status||'/'||coalesce(activated_at::text,'none') from contract_center.contracts where id='$K1'")" "^onboarding/none$"
+check "existing direct workflow still works" "$(as $A "select (public.ctr_propose_assignment('$K2', jsonb_build_object('worker_id','$W1','pay_basis','monthly','pay_rate',100)) is not null)::text")" "^true$"
+check "direct workflow also files an approval" "$(sq "select count(*) from public.approvals where status='pending'")" "^1$"
 
 echo "── 9. Credentials (upload guard: approved providers only, switch on, enforced by storage + database)"
 put() { as "$1" "insert into storage.objects(bucket_id,name) values ('worker-docs','$2') returning name"; }

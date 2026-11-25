@@ -53,7 +53,9 @@
       public_fields_required: ["An open listing needs a public title, area and facility type.", "Una publicación abierta necesita título público, zona y tipo de instalación."],
       opportunity_not_verified: ["Verify the opportunity before opening it.", "Verifica la oportunidad antes de abrirla."],
       bad_transition: ["That status change isn't allowed.", "Ese cambio de estado no está permitido."], provider_not_eligible: ["The provider doesn't meet the requirements:", "El proveedor no cumple los requisitos:"],
-      contract_mismatch: ["That contract belongs to a different opportunity.", "Ese contrato es de otra oportunidad."], not_selected: ["Select the application first.", "Primero selecciona la postulación."],
+      contract_mismatch: ["That contract belongs to a different opportunity.", "Ese contrato es de otra oportunidad."],
+      contract_not_open: ["That contract is not open (it must be onboarding, active or pending renewal).", "Ese contrato no está abierto (debe estar en incorporación, activo o por renovar)."],
+      already_assigned: ["This provider already has a proposal or assignment on that contract.", "Este proveedor ya tiene una propuesta o asignación en ese contrato."], not_selected: ["Select the application first.", "Primero selecciona la postulación."],
       provider_not_approved: ["Only approved providers can be invited.", "Solo se puede invitar a proveedores aprobados."], note_required: ["Write what was tested (10+ characters).", "Escribe qué se probó (10+ caracteres)."],
       admin_only: ["Owner only (2-step verification required).", "Solo el dueño (requiere verificación en 2 pasos)."], demo: ["Not available in demo mode.", "No disponible en modo demo."]
     };
@@ -249,7 +251,7 @@
           '<select name="pay_basis">' + opt({ monthly: ["Monthly", "Mensual"], hourly: ["Hourly", "Por hora"], per_visit: ["Per visit", "Por visita"] }, a.rate_basis || "monthly") + "</select>" +
           '<input name="pay_rate" type="number" min="0" step="0.01" required placeholder="$" value="' + esc(a.proposed_rate || "") + '"><input name="start_date" type="date">' +
           '<button class="btn solid small" type="submit">' + esc(T("Propose assignment", "Proponer asignación")) + "</button></form>" +
-          '<p class="fine">' + esc(T("Creates a PROPOSED assignment on the signed contract. Approval and activation stay in the Contract Center. No payment is made.", "Crea una asignación PROPUESTA en el contrato firmado. La aprobación y activación siguen en el Contract Center. No se hace ningún pago.")) + "</p>"
+          '<p class="fine">' + esc(T("Creates a PROPOSED assignment on the signed contract and sends an approval request to your Contract Center approvals queue. Nothing is active until you approve it there. No payment is made.", "Crea una asignación PROPUESTA en el contrato firmado y envía una solicitud a tu cola de aprobaciones del Contract Center. Nada queda activo hasta que la apruebes allí. No se hace ningún pago.")) + "</p>"
           : '<p class="fine warn">' + esc(T("No signed contract for this opportunity yet. Record the award and contract in the Contract Center first.", "Aún no hay contrato firmado para esta oportunidad. Registra primero la adjudicación y el contrato en el Contract Center.")) + "</p>") : "";
         return '<div class="cc-app"><div class="row between"><div><b>' + esc(a.name + (a.company_name ? " · " + a.company_name : "")) + "</b><small>" + esc(a.kind + " · " + a.provider_status + (a.rating_count ? " · " + Number(a.rating_avg).toFixed(1) + "★ (" + a.rating_count + ")" : "") + " · " + T("jobs ", "trabajos ") + a.jobs_done) + "</small></div>" +
           pill(L(ASTAT, a.status), "st-" + (a.status === "selected" ? "approved" : a.status === "declined" ? "rejected" : "pending")) + "</div>" +
@@ -258,7 +260,7 @@
           (a.message ? '<p class="bio">' + esc(a.message) + "</p>" : "") +
           (a.block_reason && a.block_reason !== "closed" ? '<p class="fine warn">' + esc(errText({ message: a.block_reason })) + "</p>" : "") +
           (a.decision_note ? '<p class="fine">' + esc(T("Internal note: ", "Nota interna: ") + a.decision_note) + "</p>" : "") +
-          (a.assignment_id ? '<p class="fine">' + esc(T("Assignment proposed.", "Asignación propuesta.")) + "</p>" : "") +
+          (a.assignment_id ? '<p class="fine">' + esc(T("Assignment proposed: waiting for your decision in the Contract Center approvals queue.", "Asignación propuesta: espera tu decisión en la cola de aprobaciones del Contract Center.")) + "</p>" : "") +
           '<div class="row gap wrap-row">' + next.map(([s, label, solid]) => dec(a, s, label, solid)).join("") + "</div>" + assign + "</div>";
       }).join("");
     }
