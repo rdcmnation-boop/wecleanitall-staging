@@ -105,3 +105,21 @@ if c.requires_provider_insurance and not exists (select 1 from public.insurance_
 return null;
 end $$;
 revoke all on all functions in schema contract_center from public, anon, authenticated;
+
+-- Minimal stand-in for Supabase Storage: storage.objects with wcia-staging's worker-docs rules (read 2026-11-25).
+create schema if not exists storage;
+grant usage on schema storage to anon, authenticated;
+create table if not exists storage.objects (
+  id uuid primary key default gen_random_uuid(), bucket_id text not null, name text not null, owner uuid default auth.uid(),
+  created_at timestamptz not null default now(), unique (bucket_id, name));
+create or replace function storage.foldername(name text) returns text[] language sql immutable as $$
+  select (string_to_array(name, '/'))[1:greatest(array_length(string_to_array(name, '/'), 1) - 1, 0)] $$;
+grant execute on function storage.foldername(text) to anon, authenticated;
+alter table storage.objects enable row level security;
+grant select, insert, delete on storage.objects to authenticated;
+create policy "worker docs own upload" on storage.objects for insert to authenticated
+  with check (bucket_id = 'worker-docs' and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy "worker docs own read" on storage.objects for select to authenticated
+  using (bucket_id = 'worker-docs' and ((storage.foldername(name))[1] = (select auth.uid())::text or (select public.is_admin())));
+create policy "worker docs own delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'worker-docs' and (storage.foldername(name))[1] = (select auth.uid())::text);

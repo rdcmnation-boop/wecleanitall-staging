@@ -42,7 +42,8 @@
       compliance_missing: ["A verified document is required:", "Se requiere un documento verificado:"],
       availability_required: ["Add your availability first.", "Primero escribe tu disponibilidad."], already_submitted: ["Already sent. Withdraw it first to change it.", "Ya la enviaste. Retírala primero para cambiarla."],
       too_many_open_applications: ["You have too many open applications.", "Tienes demasiadas postulaciones abiertas."], bad_input: ["Please check the fields.", "Revisa los campos."],
-      bad_document_path: ["Upload the document again.", "Vuelve a subir el documento."], expired: ["That date has already passed.", "Esa fecha ya pasó."],
+      bad_document_path: ["Upload the document again.", "Vuelve a subir el documento."], document_missing: ["The file did not arrive. Upload it again.", "El archivo no llegó. Vuelve a subirlo."],
+      upload_failed: ["Upload refused or failed. Nothing was saved.", "La carga fue rechazada o falló. No se guardó nada."], bad_coverage: ["Check the coverage amount.", "Revisa el monto de cobertura."], expired: ["That date has already passed.", "Esa fecha ya pasó."],
       security_retest_required: ["Record the security retest before switching anything on.", "Registra la prueba de seguridad antes de activar algo."],
       public_text_has_numbers: ["Public text can't contain street numbers or ZIP codes.", "El texto público no puede tener números de calle ni códigos postales."],
       public_text_has_contact: ["Public text can't contain emails or links.", "El texto público no puede tener correos ni enlaces."],
@@ -58,7 +59,8 @@
     };
     const errText = (e) => {
       const m = String((e && (e.message || e.code)) || "");
-      const k = Object.keys(ERR).find((x) => m.indexOf(x) === 0 || m.indexOf(x) > -1);
+      const keys = Object.keys(ERR);
+      const k = keys.find((x) => m.indexOf(x) === 0) || keys.find((x) => m.indexOf(x) > -1);
       if (!k) return T("Something went wrong. Try again.", "Algo salió mal. Inténtalo de nuevo.");
       const tail = m.split(":")[1];
       return L(ERR, k) + (tail ? " " + (L(REQ, tail.trim()) || tail) : "");
@@ -86,10 +88,14 @@
     const loaders = {
       opps: async () => ({ cc: await call("provider_contract_listings").catch((e) => ({ error: errText(e) })) }),
       myapps: async () => ({ cc: await call("my_contract_applications").catch((e) => ({ error: errText(e) })) }),
-      creds: async () => ({ cc: await call("my_provider_credentials").catch((e) => ({ error: errText(e) })) }),
+      creds: async () => {
+        const [cc, st] = await Promise.all([call("my_provider_credentials").catch((e) => ({ error: errText(e) })), call("provider_marketplace_status").catch(() => null)]);
+        return { cc, ccStatus: st };
+      },
       cc: async () => {
-        const [flags, list, creds] = await Promise.all([call("admin_marketplace_flags"), call("admin_contract_listings"), call("admin_pending_provider_credentials")].map((p) => p.catch((e) => ({ error: errText(e) }))));
-        return { flags, list, creds };
+        const [flags, list, creds, orphans] = await Promise.all([call("admin_marketplace_flags"), call("admin_contract_listings"), call("admin_pending_provider_credentials"),
+          call("admin_orphan_credential_files")].map((p) => p.catch((e) => ({ error: errText(e) }))));
+        return { flags, list, creds, orphans };
       }
     };
 
@@ -167,7 +173,13 @@
         '<div class="grid2">' + sel("requirement", T("Document", "Documento"), opt(COMP, "business_license")) + fld("expires_on", T("Expires (if any)", "Vence (si aplica)"), "date", "") + "</div>" +
         fld("file", T("File (PDF or photo)", "Archivo (PDF o foto)"), "file", "", 'accept=".pdf,image/*" required') +
         '<button class="btn solid" type="submit">' + esc(T("Upload for review", "Subir para revisión")) + "</button></form>";
-      return top + '<article class="card">' + list + "</article>" + f1 + f2;
+      // Upload forms only when the database says this provider may upload right now (approved + switch on).
+      // The storage rule and the database refuse anyway; hiding the forms avoids a refused upload.
+      const st = S.data.ccStatus;
+      const closed = '<p class="banner warn">' + esc(!st ? T("Uploads are not available right now.", "La carga no está disponible ahora.")
+        : st.upload_block_reason === "not_approved" ? T("You can upload credentials once your provider account is approved. For approval, use the documents section of your profile.", "Podrás subir credenciales cuando tu cuenta de proveedor esté aprobada. Para la aprobación, usa la sección de documentos de tu perfil.")
+        : T("Credential uploads are not open yet.", "La carga de credenciales aún no está abierta.")) + "</p>";
+      return top + '<article class="card">' + list + "</article>" + (st && st.uploads ? f1 + f2 : closed);
     }
 
     // ───────── owner ─────────
@@ -187,7 +199,8 @@
           area("note", T("What was tested and by whom", "Qué se probó y quién lo probó"), "", 1000) + '<button class="btn ghost" type="submit">' + esc(T("Record retest", "Registrar prueba")) + "</button></form>");
       const list = d.list && !d.list.error ? d.list : [];
       const cards = list.length ? list.map(ownerCard).join("") : X.empty("file", T("No opportunities in the Contract Center yet", "Aún no hay oportunidades en el Contract Center"));
-      return top + flags + credsCard(d.creds) + '<h2 class="sub">' + esc(T("Opportunities", "Oportunidades")) + "</h2>" + cards;
+      const orph = d.orphans && !d.orphans.error && d.orphans.length ? '<p class="banner warn">' + esc(T("Credential files without a record: ", "Archivos de credenciales sin registro: ") + d.orphans.length + T(". Review them in Supabase Storage (worker-docs).", ". Revísalos en Supabase Storage (worker-docs).")) + "</p>" : "";
+      return top + flags + orph + credsCard(d.creds) + '<h2 class="sub">' + esc(T("Opportunities", "Oportunidades")) + "</h2>" + cards;
     }
     function ownerCard(o) {
       const n = o.applications || {}, sum = Object.keys(n).reduce((s, k) => s + n[k], 0);
@@ -292,9 +305,17 @@
         if (!file) { say(T("Choose a file", "Elige un archivo"), "bad"); return; }
         if (file.size > 10 * 1024 * 1024) { say(T("File is larger than 10 MB", "El archivo pesa más de 10 MB"), "bad"); return; }
         await busy(async () => {
-          const path = await API.uploadDoc(S.me.profile.id, file);
-          if (kind === "cc-ins") await call("submit_provider_insurance", { p_kind: d.kind, p_carrier: d.carrier, p_policy_number: d.policy_number, p_coverage_usd: num(d.coverage_usd), p_starts_on: d.starts_on || null, p_expires_on: d.expires_on || null, p_document_path: path });
-          else await call("submit_provider_compliance", { p_requirement: d.requirement, p_expires_on: d.expires_on || null, p_document_path: path });
+          // 1) the database checks permission and every field before any file is sent
+          const ins = kind === "cc-ins";
+          await call("provider_credential_precheck", { p_type: ins ? "insurance" : "compliance", p_kind: ins ? d.kind : d.requirement,
+            p_coverage_usd: ins ? num(d.coverage_usd) : null, p_expires_on: d.expires_on || null });
+          // 2) upload into the guarded credentials folder (the storage rule refuses it unless allowed)
+          const path = await API.uploadDoc(S.me.profile.id, file, "credentials");
+          // 3) record it; if the record is refused, remove the file so nothing is left behind
+          try {
+            if (ins) await call("submit_provider_insurance", { p_kind: d.kind, p_carrier: d.carrier, p_policy_number: d.policy_number, p_coverage_usd: num(d.coverage_usd), p_starts_on: d.starts_on || null, p_expires_on: d.expires_on || null, p_document_path: path });
+            else await call("submit_provider_compliance", { p_requirement: d.requirement, p_expires_on: d.expires_on || null, p_document_path: path });
+          } catch (e) { await API.deleteDoc(path).catch(() => false); throw e; }
           say(T("Sent for review", "Enviado para revisión")); await X.loadTab(true);
         });
       } else if (kind === "cc-flags") {

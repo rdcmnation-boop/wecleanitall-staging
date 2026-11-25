@@ -7,7 +7,8 @@
     "withdraw_contract_application", "my_contract_applications", "my_provider_credentials", "submit_provider_insurance", "submit_provider_compliance",
     "admin_marketplace_flags", "admin_record_security_retest", "admin_set_marketplace_flags", "admin_contract_listings", "admin_publish_listing",
     "admin_set_listing_line_visibility", "admin_listing_lines", "admin_invite_provider", "admin_listing_applications", "admin_decide_application",
-    "admin_application_to_assignment", "admin_verify_provider_credential", "admin_pending_provider_credentials"];
+    "admin_application_to_assignment", "admin_verify_provider_credential", "admin_pending_provider_credentials",
+    "provider_marketplace_status", "provider_credential_precheck", "admin_orphan_credential_files"];
   const CFG = window.WCIA_CONFIG || {};
   const LIVE = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY);
 
@@ -274,15 +275,22 @@
         } catch (e) { return { mode: "error" }; }
       },
       // Private documents bucket (storage.sql)
-      async uploadDoc(uid, file) {
+      // sub: optional sub-folder ("credentials" = provider credentials, guarded by the storage rule).
+      async uploadDoc(uid, file, sub) {
         const t = await token();
         const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(-80);
-        const name = Date.now() + "_" + safe;
+        const name = (sub ? sub + "/" : "") + Date.now() + "_" + safe;
         const r = await fetch(URL_ + "/storage/v1/object/worker-docs/" + uid + "/" + name, {
           method: "POST", headers: { apikey: KEY, Authorization: "Bearer " + t, "Content-Type": file.type || "application/octet-stream", "x-upsert": "false" }, body: file
         });
         if (!r.ok) throw new ApiError("upload_failed");
         return uid + "/" + name;
+      },
+      // Removes one of the signed-in user's own files (used when a credential record is refused after upload).
+      async deleteDoc(path) {
+        const t = await token();
+        const r = await fetch(URL_ + "/storage/v1/object/worker-docs/" + path, { method: "DELETE", headers: { apikey: KEY, Authorization: "Bearer " + t } });
+        return r.ok;
       },
       // Contracts & Cleaning Jobs (contract_marketplace.sql). Only these database functions can be called from here.
       async cc(fn, args) {
@@ -725,7 +733,8 @@
         return { mode: "demo", reply };
       },
       async uploadDoc(id, file) { const db = load(); (db.docs[id] = db.docs[id] || []).push({ name: file.name, path: "" }); save(db); return ""; },
-      async cc() { return null; }, // Contracts & jobs need the real database; demo mode shows a notice.
+      async cc() { return null; },
+      async deleteDoc() { return true; }, // Contracts & jobs need the real database; demo mode shows a notice.
       async listDocs(id) { return (load().docs[id] || []).slice(); },
       async docUrl() { return null; }
     };

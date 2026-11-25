@@ -16,7 +16,8 @@ function load(over) {
   vm.runInNewContext(read('app/contracts_app.js'), ctx);
   const S = Object.assign({ data: {}, me: { profile: { id: 'u1' }, worker: { status: 'approved' } } }, over && over.S);
   const API = Object.assign({ mode: 'live', cc: async (fn, args) => { calls.push([fn, args]); return over && over.ret ? over.ret(fn) : []; },
-    uploadDoc: async (uid, f) => uid + '/1_' + f.name, docUrl: async () => null, adminWorkers: async () => [] }, over && over.API);
+    uploadDoc: async (uid, f, sub) => { calls.push(['upload', sub]); return uid + '/' + (sub ? sub + '/' : '') + '1_' + f.name; },
+    deleteDoc: async (path) => { calls.push(['delete', path]); return true; }, docUrl: async () => null, adminWorkers: async () => [] }, over && over.API);
   const toasts = [];
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const M = win.WCIA_CONTRACTS({ esc, icon: () => '', S, API, when: (x) => 'W(' + x + ')', money: (n) => '$' + n, empty: (i, t) => '<div class="empty">' + esc(t) + '</div>',
@@ -33,7 +34,10 @@ test('the app can call exactly the marketplace functions the database grants to 
   const api = read('app/api.js');
   const list = JSON.parse('[' + /const CC_FNS = \[([\s\S]*?)\];/.exec(api)[1] + ']');
   const grant = /grant execute on function ([\s\S]*?)\s+to authenticated;/.exec(SQL.split('grant execute on function public.contract_listings() to anon, authenticated;')[1])[1];
-  const granted = [...grant.matchAll(/public\.([a-z_]+)\(/g)].map((m) => m[1]);
+  const GUARD = read('marketplace/supabase/contract_marketplace_upload_guard.sql');
+  const guardGrant = /grant execute on function ([\s\S]*?)\s+to authenticated;/.exec(GUARD)[1];
+  const granted = [...new Set([...grant.matchAll(/public\.([a-z_]+)\(/g), ...guardGrant.matchAll(/public\.([a-z_]+)\(/g)].map((m) => m[1]))]
+    .filter((n) => n !== 'provider_can_upload_credentials');   // used by the storage rule, not called by the app
   assert.deepEqual([...list].sort(), [...granted].sort());
   assert.match(api, /if \(!CC_FNS\.includes\(fn\)\) throw new ApiError\("not_allowed"\)/);
   assert.match(api, /\(function \(\) \{\n  "use strict";/);   // strict mode stays the first statement
@@ -95,13 +99,59 @@ test('saving a draft sends only the allowed fields to the database', async () =>
   assert.equal(calls[0][1].p.robot_experience, true);
 });
 
-test('credential upload sends the uploaded file path in the provider folder', async () => {
+test('credential upload: database precheck first, then guarded folder, then record', async () => {
   const { M, calls } = load();
   const form = { querySelector: () => ({ files: [{ name: 'coi.pdf', size: 1000 }] }) };
   await M.onSubmit('cc-ins', { kind: 'general_liability', carrier: 'Acme', policy_number: '1', coverage_usd: '1000000', starts_on: '', expires_on: '2027-11-01' }, form);
-  assert.equal(calls[0][0], 'submit_provider_insurance');
-  assert.equal(calls[0][1].p_document_path, 'u1/1_coi.pdf');
-  assert.equal(calls[0][1].p_coverage_usd, 1000000);
+  assert.deepEqual(calls.map((c) => c[0]), ['provider_credential_precheck', 'upload', 'submit_provider_insurance']);
+  assert.equal(calls[0][1].p_type, 'insurance');
+  assert.equal(calls[1][1], 'credentials');
+  assert.equal(calls[2][1].p_document_path, 'u1/credentials/1_coi.pdf');
+  assert.equal(calls[2][1].p_coverage_usd, 1000000);
+});
+
+test('credential upload refused by the precheck sends no file at all', async () => {
+  const { M, calls, toasts } = load({ API: { cc: async (fn) => { calls.push([fn]); if (fn === 'provider_credential_precheck') throw new Error('credentials_disabled'); return 1; } } });
+  const form = { querySelector: () => ({ files: [{ name: 'coi.pdf', size: 1000 }] }) };
+  await M.onSubmit('cc-ins', { kind: 'general_liability', coverage_usd: '1', expires_on: '2027-11-01' }, form);
+  assert.deepEqual(calls.map((c) => c[0]), ['provider_credential_precheck']);
+  assert.match(toasts[0][0], /not open yet/);
+});
+
+test('if the record is refused after upload, the file is deleted', async () => {
+  const { M, calls } = load({ API: { cc: async (fn, args) => { calls.push([fn, args]); if (fn.indexOf('submit_') === 0) throw new Error('document_missing'); return 'u1/credentials/'; } } });
+  const form = { querySelector: () => ({ files: [{ name: 'bg.pdf', size: 1000 }] }) };
+  await M.onSubmit('cc-comp', { requirement: 'background_check', expires_on: '' }, form);
+  assert.deepEqual(calls.map((c) => c[0]), ['provider_credential_precheck', 'upload', 'submit_provider_compliance', 'delete']);
+  assert.equal(calls[3][1], 'u1/credentials/1_bg.pdf');
+});
+
+test('upload forms are hidden unless the database says uploads are allowed', () => {
+  const { M, S } = load();
+  S.data = { cc: { insurance: [], compliance: [] }, ccStatus: { uploads: false, upload_block_reason: 'credentials_disabled' } };
+  let html = M.views.creds();
+  assert.doesNotMatch(html, /data-form="cc-ins"|data-form="cc-comp"|type="file"/);
+  assert.match(html, /Credential uploads are not open yet/);
+  S.data.ccStatus = { uploads: false, upload_block_reason: 'not_approved' };
+  html = M.views.creds();
+  assert.doesNotMatch(html, /type="file"/);
+  assert.match(html, /once your provider account is approved/);
+  S.data.ccStatus = null;
+  assert.doesNotMatch(M.views.creds(), /type="file"/);
+  S.data.ccStatus = { uploads: true, upload_block_reason: null };
+  assert.match(M.views.creds(), /data-form="cc-ins"/);
+});
+
+test('error text prefers the exact code (provider_not_approved is not not_approved)', async () => {
+  const { M, toasts } = load({ API: { cc: async () => { throw new Error('provider_not_approved'); } } });
+  await M.onSubmit('cc-invite', { worker: 'w' }, { dataset: { id: 'o1' } });
+  assert.match(toasts[0][0], /Only approved providers can be invited/);
+});
+
+test('owner sees a warning when credential files have no record', () => {
+  const { M, S } = load();
+  S.data = { flags: {}, list: [], creds: null, orphans: [{ path: 'x/credentials/1.pdf' }] };
+  assert.match(M.views.cc(), /Credential files without a record: 1/);
 });
 
 test('owner screen: switches off by default, retest form shown, server errors explained', async () => {

@@ -9,6 +9,7 @@ psql -U postgres -qtAc "create database $DB" >/dev/null
 load() { psql -U postgres -d $DB -q -v ON_ERROR_STOP=1 -f "$1" >/dev/null 2>&1 || { echo "LOAD FAILED: $1"; exit 1; }; }
 load "$HERE/supabase_stub.sql"; load "$HERE/../schema.sql"; load "$HERE/contract_center_fixture.sql"
 load "$HERE/../contract_marketplace.sql"; load "$HERE/../contract_marketplace.sql"   # must be re-runnable
+load "$HERE/../contract_marketplace_upload_guard.sql"; load "$HERE/../contract_marketplace_upload_guard.sql"
 
 pass=0; fail=0
 sq() { psql -U postgres -d $DB -qtA -c "$1" 2>&1; }
@@ -170,13 +171,38 @@ check "owner creates PROPOSED assignment" "$(as $A "select public.admin_applicat
 check "assignment is proposed, not active" "$(sq "select status from contract_center.provider_assignments")" "^proposed$"
 check "no double assignment" "$(as $A "select public.admin_application_to_assignment('$APP','33333333-0000-0000-0000-000000000001','subcontractor','monthly',3800,null)")" "already_assigned"
 
-echo "── 9. Credentials"
-check "upload into someone else's folder refused" "$(as $W2 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date,current_date+100,'$W1/coi.pdf')")" "bad_document_path"
-check "path traversal refused" "$(as $W2 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date,current_date+100,'$W2/../$W1/coi.pdf')")" "bad_document_path"
-check "expired policy refused" "$(as $W2 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date-400,current_date-1,'$W2/coi.pdf')")" "expired"
-check "own upload accepted as submitted" "$(as $W2 "select public.submit_provider_insurance('general_liability','Acme Mutual','GL-1',1000000,current_date,current_date+300,'$W2/coi.pdf') > 0")" "^t$"
-check "provider sees own credential pending" "$(as $W2 "select public.my_provider_credentials()")" "\"status\": \"submitted\""
-check "suspended provider cannot upload" "$(as $W4 "select public.submit_provider_compliance('background_check',null,'$W4/bg.pdf')")" "not_allowed"
+echo "── 9. Credentials (upload guard: approved providers only, switch on, enforced by storage + database)"
+put() { as "$1" "insert into storage.objects(bucket_id,name) values ('worker-docs','$2') returning name"; }
+files() { sq "select count(*) from storage.objects where name like '$1'"; }
+check "status: pending provider may not upload" "$(as $W2 "select public.provider_marketplace_status()")" '"uploads": false.*not_approved|not_approved.*"uploads": false'
+check "status: approved provider may upload" "$(as $W3 "select public.provider_marketplace_status()")" '"uploads": true'
+check "precheck: pending refused" "$(as $W2 "select public.provider_credential_precheck('insurance','general_liability',1000000,current_date+300)")" "not_approved"
+check "storage: pending upload refused before the file exists" "$(put $W2 "$W2/credentials/coi.pdf")" "row-level security"
+check "storage: suspended upload refused" "$(put $W4 "$W4/credentials/bg.pdf")" "row-level security"
+check "no file left by refused uploads" "$(files '%/credentials/%')" "^0$"
+check "database: pending submit refused" "$(as $W2 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date,current_date+100,'$W2/credentials/coi.pdf')")" "not_approved"
+check "suspended submit refused" "$(as $W4 "select public.submit_provider_compliance('background_check',null,'$W4/credentials/bg.pdf')")" "not_approved"
+check "profile documents (approval process) still upload" "$(put $W2 "$W2/1_license.pdf")" "license.pdf"
+check "precheck: expired refused before upload" "$(as $W3 "select public.provider_credential_precheck('insurance','general_liability',1000000,current_date-1)")" "expired"
+check "precheck: bad coverage refused before upload" "$(as $W3 "select public.provider_credential_precheck('insurance','general_liability',0,current_date+300)")" "bad_coverage"
+check "precheck: approved gets own folder" "$(as $W3 "select public.provider_credential_precheck('insurance','general_liability',1000000,current_date+300)")" "^$W3/credentials/$"
+check "storage: approved upload into own credentials folder" "$(put $W3 "$W3/credentials/1_coi.pdf")" "1_coi.pdf"
+check "storage: upload into another provider's folder refused" "$(put $W3 "$W1/credentials/1_coi.pdf")" "row-level security"
+check "database: path in another folder refused" "$(as $W3 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date,current_date+100,'$W1/credentials/1_coi.pdf')")" "bad_document_path"
+check "database: path traversal refused" "$(as $W3 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date,current_date+100,'$W3/credentials/../../$W1/x.pdf')")" "bad_document_path"
+check "database: file outside credentials folder refused" "$(as $W3 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date,current_date+100,'$W3/1_coi.pdf')")" "bad_document_path"
+check "database: record without a stored file refused" "$(as $W3 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date,current_date+100,'$W3/credentials/never_uploaded.pdf')")" "document_missing"
+check "database: expired refused" "$(as $W3 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date-400,current_date-1,'$W3/credentials/1_coi.pdf')")" "expired"
+check "approved upload accepted as pending review" "$(as $W3 "select public.submit_provider_insurance('general_liability','Acme Mutual','GL-1',1000000,current_date,current_date+300,'$W3/credentials/1_coi.pdf') > 0")" "^t$"
+check "provider sees own credential pending" "$(as $W3 "select public.my_provider_credentials()")" "\"status\": \"submitted\""
+check "self-uploaded, unverified insurance still does not unlock submit" "$(as $W3 "select public.submit_contract_application('$R1')")" "insurance_missing|already|closed|no_draft"
+check "existing verified credential untouched" "$(sq "select count(*) from public.insurance_policies where worker_id='$W1' and status='verified'")" "^1$"
+sq "insert into storage.objects(bucket_id,name,owner,created_at) values ('worker-docs','$W3/credentials/2_orphan.pdf','$W3',now()-interval '2 hours')" >/dev/null
+check "owner orphan report lists stray credential file" "$(as $A "select public.admin_orphan_credential_files()")" "2_orphan.pdf"
+nocheck "orphan report ignores files that have a record" "$(as $A "select public.admin_orphan_credential_files()")" "1_coi.pdf"
+check "provider cannot read orphan report" "$(as $W3 "select public.admin_orphan_credential_files()")" "admin_only"
+check "anon cannot call upload functions" "$(as anon "select public.provider_credential_precheck('insurance','general_liability',1,current_date+1)")" "permission denied"
+sq "delete from storage.objects where name like '%/2_orphan.pdf'" >/dev/null
 
 echo "── 10. Listing timing, test listings, switch-off"
 sq "update contract_center.opportunities set applications_due_at = now() + interval '3 days' where id='$O1'" >/dev/null
@@ -189,6 +215,12 @@ check "test listing appears only when staging flag on" "$(as anon "select title 
 as $A "select public.admin_set_marketplace_flags(false,false,false,false)" >/dev/null
 check "switched off: board empty again" "$(as anon "select count(*) from public.contract_listings()")" "^0$"
 check "switched off: submissions refused" "$(as $W1 "select public.submit_contract_application('$R2')")" "applications_disabled"
+check "switched off: approved provider status shows no uploads" "$(as $W3 "select public.provider_marketplace_status()")" '"uploads": false'
+check "switched off: precheck refused" "$(as $W3 "select public.provider_credential_precheck('insurance','general_liability',1000000,current_date+300)")" "credentials_disabled"
+check "switched off: storage refuses credential upload" "$(put $W3 "$W3/credentials/3_off.pdf")" "row-level security"
+check "switched off: database refuses credential record" "$(as $W3 "select public.submit_provider_insurance('general_liability','X','1',1000000,current_date,current_date+100,'$W3/credentials/1_coi.pdf')")" "credentials_disabled"
+check "switched off: no file left behind" "$(files '%/3_off.pdf')" "^0$"
+check "switched off: profile documents still upload" "$(put $W2 "$W2/2_id.pdf")" "2_id.pdf"
 
 echo
 echo "passed: $pass  failed: $fail"
