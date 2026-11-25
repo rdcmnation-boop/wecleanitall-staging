@@ -73,7 +73,7 @@ Setting needed outside the repo for this branch: Supabase → `wcia-staging` →
 
 ## Contracts & Cleaning Jobs (branch `contracts-jobs-local`, local only, 2026-11-25)
 
-Built for review. Not pushed, not deployed, and the database migration is **not applied** to any project.
+Approved by the owner on 2026-11-25 for **staging only**. Migration applied to wcia-staging (as `contract_marketplace_1_schema` + `contract_marketplace_2_functions`, function code verified identical to the tested build). Deployed to staging.wecleanitallfl.com. **All marketplace switches OFF, no security retest recorded yet, payments untouched, production untouched.**
 
 | Area | What changed |
 |---|---|
